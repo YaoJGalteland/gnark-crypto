@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark-crypto/field/koalabear"
 	fext "github.com/consensys/gnark-crypto/field/koalabear/extensions"
 	"github.com/consensys/gnark-crypto/field/koalabear/sis"
+	"github.com/consensys/gnark-crypto/internal/parallel"
 	"github.com/stretchr/testify/require"
 )
 
@@ -232,10 +233,10 @@ func FuzzVortex(f *testing.F) {
 func BenchmarkVortexReal(b *testing.B) {
 
 	var (
-		numCol             = 1 << 19
-		numRow             = 1 << 11
-		invRate            = 8
-		numSelectedColumns = 64
+		numCol             = 1 << 18
+		numRow             = 1 << 6
+		invRate            = 2
+		numSelectedColumns = 256
 		wg                 sync.WaitGroup
 		sisParams, _       = sis.NewRSis(0, 9, 16, numRow)
 		params, _          = NewParams(numCol, numRow, sisParams, invRate, numSelectedColumns)
@@ -285,6 +286,28 @@ func BenchmarkVortexReal(b *testing.B) {
 			}
 		}
 	})
+
+	b.Run("fft", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			proverState, err = Commit(params, m)
+
+			sizeCodeWord := params.SizeCodeWord()
+
+			// 1. Encode the input matrix
+			codewords := make([]koalabear.Element, len(m)*sizeCodeWord)
+			parallel.Execute(len(m), func(start, end int) {
+				for i := start; i < end; i++ {
+					params.EncodeReedSolomon(m[i], codewords[i*sizeCodeWord:i*sizeCodeWord+sizeCodeWord])
+				}
+			})
+
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
 	_ = proverState
 	_ = alpha
 
