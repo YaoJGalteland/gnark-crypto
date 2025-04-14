@@ -290,7 +290,6 @@ func BenchmarkVortexReal(b *testing.B) {
 	b.Run("fft", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			proverState, err = Commit(params, m)
 
 			sizeCodeWord := params.SizeCodeWord()
 
