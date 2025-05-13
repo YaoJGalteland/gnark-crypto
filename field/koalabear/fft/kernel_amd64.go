@@ -98,6 +98,7 @@ func innerDIFWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, e
 			return
 		}
 		println("avx512")
+		print("m = ", m)
 		innerDIFWithTwiddles_avx512(&v[0], &twiddles[0], start, end, m)
 	}
 }
@@ -109,6 +110,8 @@ func innerDITWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, e
 			return
 		}
 		println("avx512")
+		print("m = ", m)
+
 		innerDITWithTwiddles_avx512(&v[0], &twiddles[0], start, end, m)
 	}
 }
