@@ -82,8 +82,9 @@ func ConvertE4SliceToCoefficientSlices(input []fext.E4) [4][]koalabear.Element {
 
 		// Extract coefficients and place them into the corresponding output slices
 		output0[i] = e4Element.B0.A0
-		output1[i] = e4Element.B0.A1
-		output2[i] = e4Element.B1.A0
+		output1[i] = e4Element.B1.A0
+
+		output2[i] = e4Element.B0.A1
 		output3[i] = e4Element.B1.A1
 	}
 
@@ -97,8 +98,6 @@ func innerDIFWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, e
 			innerDIFWithTwiddlesGeneric(v, twiddles, start, end, m)
 			return
 		}
-		println("avx512")
-		print("m = ", m)
 		innerDIFWithTwiddles_avx512(&v[0], &twiddles[0], start, end, m)
 	}
 }
@@ -109,8 +108,6 @@ func innerDITWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, e
 			innerDITWithTwiddlesGeneric(v, twiddles, start, end, m)
 			return
 		}
-		println("avx512")
-		print("m = ", m)
 
 		innerDITWithTwiddles_avx512(&v[0], &twiddles[0], start, end, m)
 	}
@@ -122,7 +119,6 @@ func kerDIFNP_256Ext(a []fext.E4, twiddles [][]koalabear.Element, stage int) {
 			kerDIFNP_256generic(v, twiddles, stage)
 			return
 		}
-		println("avx512")
 
 		kerDIFNP_256_avx512(v, twiddles, stage)
 	}
@@ -134,7 +130,6 @@ func kerDITNP_256Ext(a []fext.E4, twiddles [][]koalabear.Element, stage int) {
 			kerDITNP_256generic(v, twiddles, stage)
 			return
 		}
-		println("avx512")
 
 		kerDITNP_256_avx512(v, twiddles, stage)
 	}
