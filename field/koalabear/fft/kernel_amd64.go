@@ -92,41 +92,41 @@ func ConvertE4SliceToCoefficientSlices(input []fext.E4) [4][]koalabear.Element {
 }
 
 func innerDIFWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, end, m int) {
-	if !cpu.SupportAVX512 || m < 16 {
-		innerDIFWithTwiddlesGenericExt(a, twiddles, start, end, m)
-		return
-	}
 	for _, v := range ConvertE4SliceToCoefficientSlices(a) {
+		if !cpu.SupportAVX512 || m < 16 {
+			innerDIFWithTwiddlesGeneric(v, twiddles, start, end, m)
+			return
+		}
 		innerDIFWithTwiddles_avx512(&v[0], &twiddles[0], start, end, m)
 	}
 }
 
 func innerDITWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, end, m int) {
-	if !cpu.SupportAVX512 || m < 16 {
-		innerDITWithTwiddlesGenericExt(a, twiddles, start, end, m)
-		return
-	}
 	for _, v := range ConvertE4SliceToCoefficientSlices(a) {
+		if !cpu.SupportAVX512 || m < 16 {
+			innerDITWithTwiddlesGeneric(v, twiddles, start, end, m)
+			return
+		}
 		innerDITWithTwiddles_avx512(&v[0], &twiddles[0], start, end, m)
 	}
 }
 
 func kerDIFNP_256Ext(a []fext.E4, twiddles [][]koalabear.Element, stage int) {
-	if !cpu.SupportAVX512 {
-		kerDIFNP_256genericExt(a, twiddles, stage)
-		return
-	}
 	for _, v := range ConvertE4SliceToCoefficientSlices(a) {
+		if !cpu.SupportAVX512 {
+			kerDIFNP_256generic(v, twiddles, stage)
+			return
+		}
 		kerDIFNP_256_avx512(v, twiddles, stage)
 	}
 }
 
 func kerDITNP_256Ext(a []fext.E4, twiddles [][]koalabear.Element, stage int) {
-	if !cpu.SupportAVX512 {
-		kerDITNP_256genericExt(a, twiddles, stage)
-		return
-	}
 	for _, v := range ConvertE4SliceToCoefficientSlices(a) {
+		if !cpu.SupportAVX512 {
+			kerDITNP_256generic(v, twiddles, stage)
+			return
+		}
 		kerDITNP_256_avx512(v, twiddles, stage)
 	}
 }
