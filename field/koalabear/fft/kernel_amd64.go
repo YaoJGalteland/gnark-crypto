@@ -71,24 +71,24 @@ func ConvertE4SliceToCoefficientSlices(input []fext.E4) [4][]koalabear.Element {
 	n := len(input)
 
 	// Create the four output slices, each with the same length as the input slice
-	outputC0 := make([]koalabear.Element, n)
-	outputC1 := make([]koalabear.Element, n)
-	outputC2 := make([]koalabear.Element, n)
-	outputC3 := make([]koalabear.Element, n)
+	output0 := make([]koalabear.Element, n)
+	output1 := make([]koalabear.Element, n)
+	output2 := make([]koalabear.Element, n)
+	output3 := make([]koalabear.Element, n)
 
 	// Iterate through the input slice and distribute the coefficients
 	for i := 0; i < n; i++ {
 		e4Element := input[i] // Get the current fext.E4 element
 
 		// Extract coefficients and place them into the corresponding output slices
-		outputC0[i] = e4Element.B0.A0
-		outputC1[i] = e4Element.B0.A1
-		outputC2[i] = e4Element.B1.A0
-		outputC3[i] = e4Element.B1.A1
+		output0[i] = e4Element.B0.A0
+		output1[i] = e4Element.B0.A1
+		output2[i] = e4Element.B1.A0
+		output3[i] = e4Element.B1.A1
 	}
 
 	// Return the four slices packaged in an array
-	return [4][]koalabear.Element{outputC0, outputC1, outputC2, outputC3}
+	return [4][]koalabear.Element{output0, output1, output2, output3}
 }
 
 func innerDIFWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, end, m int) {
@@ -97,6 +97,7 @@ func innerDIFWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, e
 			innerDIFWithTwiddlesGeneric(v, twiddles, start, end, m)
 			return
 		}
+		println("avx512")
 		innerDIFWithTwiddles_avx512(&v[0], &twiddles[0], start, end, m)
 	}
 }
@@ -107,6 +108,7 @@ func innerDITWithTwiddlesExt(a []fext.E4, twiddles []koalabear.Element, start, e
 			innerDITWithTwiddlesGeneric(v, twiddles, start, end, m)
 			return
 		}
+		println("avx512")
 		innerDITWithTwiddles_avx512(&v[0], &twiddles[0], start, end, m)
 	}
 }
@@ -117,6 +119,8 @@ func kerDIFNP_256Ext(a []fext.E4, twiddles [][]koalabear.Element, stage int) {
 			kerDIFNP_256generic(v, twiddles, stage)
 			return
 		}
+		println("avx512")
+
 		kerDIFNP_256_avx512(v, twiddles, stage)
 	}
 }
@@ -127,6 +131,8 @@ func kerDITNP_256Ext(a []fext.E4, twiddles [][]koalabear.Element, stage int) {
 			kerDITNP_256generic(v, twiddles, stage)
 			return
 		}
+		println("avx512")
+
 		kerDITNP_256_avx512(v, twiddles, stage)
 	}
 }
