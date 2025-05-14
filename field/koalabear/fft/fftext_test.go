@@ -60,6 +60,7 @@ func TestFFTExt(t *testing.T) {
 					sample.Exp(sample, big.NewInt(int64(ithpower)))
 
 					eval := evaluatePolynomialExt(backupPol, sample)
+					fmt.Print("eval: ", eval, " ithpower: ", ithpower, " pol[ithpower]: ", pol[ithpower], "\n")
 
 					return eval.Equal(&pol[ithpower])
 

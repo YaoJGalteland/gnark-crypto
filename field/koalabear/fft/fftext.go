@@ -248,16 +248,98 @@ func difFFTExt(a []fext.E4, w koalabear.Element, twiddles [][]koalabear.Element,
 	}
 
 }
-
+/*
+if start == 0 {
+	koalabear.Butterfly(&a[0], &a[m])
+	start++
+}
+for i := start; i < end; i++ {
+	koalabear.Butterfly(&a[i], &a[i+m])
+}
+v1 := koalabear.Vector(a[start+m : end+m])
+v2 := koalabear.Vector(twiddles[start:end])
+v1.Mul(v1, v2)
+for _,v := range ConvertE4SliceToCoefficientSlices(a) {
+	innerDIFWithTwiddlesGeneric(v, twiddles, start, end, m)
+}
+*/
 func innerDIFWithTwiddlesGenericExt(a []fext.E4, twiddles []koalabear.Element, start, end, m int) {
-	if start == 0 {
-		fext.Butterfly(&a[0], &a[m])
-		start++
+	v := ConvertE4SliceToCoefficientAddressSlices(a)
+	//w:= ConvertE4SliceToCoefficientSlices(a)
+	/*
+	for i := 0; i < 4; i++ {
+		print("--- Outer loop iteration %d ---\n", i)
+
+		mutableValue := start
+		print("Initial mutableValue at start of outer loop %d: %d\n", i, mutableValue)
+		if mutableValue == 0 {
+			koalabear.Butterfly(v[i][0], v[i][m])	
+			//fext.Butterfly(&a[0], &a[m])
+			mutableValue++
+		}
+	
+		for j := mutableValue; j < end; j++ {
+			koalabear.Butterfly(v[i][j], v[i][j+m])
+			
+		}
+		v1 := koalabear.Vector(v[i][start+m : end+m])
+		v2 := koalabear.Vector(twiddles[start:end])
+		v1.Mul(v1, v2)
+	}
+		*/
+	
+	for i := 0; i < 4; i++ {
+		if start == 0 {
+			koalabear.Butterfly(v[i][0], v[i][m])	
+			koalabear.Butterfly(v[1][0], v[1][m])	
+			koalabear.Butterfly(v[2][0], v[2][m])
+			koalabear.Butterfly(v[3][0], v[3][m])
+
+			//fext.Butterfly(&a[0], &a[m])
+			start++
+		}
+		
 	}
 	for i := start; i < end; i++ {
 		fext.Butterfly(&a[i], &a[i+m])
 		a[i+m].MulByElement(&a[i+m], &twiddles[i])
 	}
+
+	
+
+	/*
+	for i := 0; i < 4; i++ {
+
+		mutableValue := start
+		if mutableValue == 0 {
+			koalabear.Butterfly(&v[i][0], &v[i][m])	
+			//fext.Butterfly(&a[0], &a[m])
+			mutableValue++
+		}
+
+		for j := mutableValue; j < end; j++ {
+			koalabear.Butterfly(&v[i][j], &v[i][j+m])	
+			//a[i+m].MulByElement(&a[i+m], &twiddles[i])
+		}
+		
+
+		if i == 4 {
+			start=mutableValue
+		}
+	}
+
+
+	
+	v0 := koalabear.Vector(v[0][start+m : end+m])
+	v1 := koalabear.Vector(v[1][start+m : end+m])
+	v2 := koalabear.Vector(v[2][start+m : end+m])
+	v3 := koalabear.Vector(v[3][start+m : end+m])
+	v5 := koalabear.Vector(twiddles[start:end])
+	v0.Mul(v0, v5)
+	v1.Mul(v1, v5)
+	v2.Mul(v2, v5)
+	v3.Mul(v3, v5)
+	*/
 }
 
 func innerDIFWithoutTwiddlesExt(a []fext.E4, at, w koalabear.Element, start, end, m int) {
@@ -404,4 +486,52 @@ func kerDITNP_256genericExt(a []fext.E4, twiddles [][]koalabear.Element, stage i
 		innerDITWithTwiddlesGenericExt(a[offset:offset+128], twiddles[stage+1], 0, 64, 64)
 	}
 	innerDITWithTwiddlesGenericExt(a[:256], twiddles[stage+0], 0, 128, 128)
+}
+
+func ConvertE4SliceToCoefficientSlices(input []fext.E4) [4][]koalabear.Element {
+	n := len(input)
+
+	// Create the four output slices, each with the same length as the input slice
+	output0 := make([]koalabear.Element, n)
+	output1 := make([]koalabear.Element, n)
+	output2 := make([]koalabear.Element, n)
+	output3 := make([]koalabear.Element, n)
+
+	// Iterate through the input slice and distribute the coefficients
+	for i := 0; i < n; i++ {
+		e4Element := &input[i] // Get the current fext.E4 element
+
+		// Extract coefficients and place them into the corresponding output slices
+		output0[i] = e4Element.B0.A0
+		output1[i] = e4Element.B0.A1
+
+		output2[i] = e4Element.B1.A0
+		output3[i] = e4Element.B1.A1
+	}
+	// Return the four slices packaged in an array
+	return [4][]koalabear.Element{output0, output1, output2, output3}
+}
+
+func ConvertE4SliceToCoefficientAddressSlices(input []fext.E4) [4][]*koalabear.Element {
+	n := len(input)
+
+	// Create the four output slices, each with the same length as the input slice
+	output0 := make([]*koalabear.Element, n)
+	output1 := make([]*koalabear.Element, n)
+	output2 := make([]*koalabear.Element, n)
+	output3 := make([]*koalabear.Element, n)
+
+	// Iterate through the input slice and distribute the coefficients
+	for i := 0; i < n; i++ {
+		e4Element := &input[i] // Get the current fext.E4 element
+
+		// Extract coefficients and place them into the corresponding output slices
+		output0[i] = &e4Element.B0.A0
+		output1[i] = &e4Element.B0.A1
+
+		output2[i] = &e4Element.B1.A0
+		output3[i] = &e4Element.B1.A1
+	}
+	// Return the four slices packaged in an array
+	return [4][]*koalabear.Element{output0, output1, output2, output3}
 }
