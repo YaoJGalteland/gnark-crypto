@@ -50,6 +50,12 @@ type Domain struct {
 
 	// cosetTableInv same as cosetTable but with u⁻¹
 	cosetTableInv []koalabear.Element
+
+	// cosetTableBitReversed is cosetTable in bit-reversed order for vectorized DIT coset multiplication
+	cosetTableBitReversed []koalabear.Element
+
+	// cosetTableInvBitReversed is cosetTableInv in bit-reversed order for vectorized DIF inverse coset multiplication
+	cosetTableInvBitReversed []koalabear.Element
 }
 
 // GeneratorFullMultiplicativeGroup returns a generator of 𝔽ᵣˣ
@@ -166,6 +172,19 @@ func (d *Domain) preComputeTwiddles() {
 
 	wg.Wait()
 
+	// precompute bit-reversed coset tables for vectorized coset multiplication
+	n := d.Cardinality
+	nn := uint64(64 - bits.TrailingZeros64(n))
+	if d.Cardinality <= 1<<22 {
+
+		d.cosetTableBitReversed = make([]koalabear.Element, n)
+		d.cosetTableInvBitReversed = make([]koalabear.Element, n)
+		for i := range n {
+			irev := bits.Reverse64(i) >> nn
+			d.cosetTableBitReversed[i] = d.cosetTable[irev]
+			d.cosetTableInvBitReversed[i] = d.cosetTableInv[irev]
+		}
+	}
 }
 
 func buildTwiddles(t [][]koalabear.Element, omega koalabear.Element, nbStages uint64) {
