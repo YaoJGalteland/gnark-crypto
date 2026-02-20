@@ -3,17 +3,20 @@ package ecc
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
-	"text/template"
 
 	"github.com/consensys/bavard"
+	"github.com/consensys/gnark-crypto/internal/generator/common"
 	"github.com/consensys/gnark-crypto/internal/generator/config"
+	"github.com/consensys/gnark-crypto/internal/generator/ecc/template"
 )
 
-func Generate(conf config.Curve, baseDir string, bgen *bavard.BatchGenerator) error {
+func Generate(conf config.Curve, baseDir string, gen *common.Generator) error {
 	packageName := strings.ReplaceAll(conf.Name, "-", "")
+
+	// we need to use a new generator with the correct FS
+	eccGen := common.NewDefaultGenerator(template.FS)
 
 	var entries []bavard.Entry
 
@@ -23,13 +26,13 @@ func Generate(conf config.Curve, baseDir string, bgen *bavard.BatchGenerator) er
 		{File: filepath.Join(baseDir, "g1_test.go"), Templates: []string{"tests/point.go.tmpl"}},
 	}
 	// if not secp256k1, generate the lagrange transform
-	if conf.Name != config.SECP256K1.Name || conf.Name != config.GRUMPKIN.Name {
+	if conf.Name != config.SECP256K1.Name || conf.Name != config.GRUMPKIN.Name || conf.Name != config.SECP256R1.Name {
 		os.Remove(filepath.Join(baseDir, "g1_lagrange.go"))
 		os.Remove(filepath.Join(baseDir, "g1_lagrange_test.go"))
 	}
 
 	g1 := pconf{conf, conf.G1}
-	if err := bgen.Generate(g1, packageName, "./ecc/template", entries...); err != nil {
+	if err := eccGen.Generate(g1, packageName, "", "", entries...); err != nil {
 		return err
 	}
 
@@ -41,10 +44,6 @@ func Generate(conf config.Curve, baseDir string, bgen *bavard.BatchGenerator) er
 		{File: filepath.Join(baseDir, "multiexp_test.go"), Templates: []string{"tests/multiexp.go.tmpl"}},
 	}
 	conf.Package = packageName
-	funcs := make(template.FuncMap)
-	funcs["last"] = func(x int, a interface{}) bool {
-		return x == reflect.ValueOf(a).Len()-1
-	}
 
 	// return the last window size for a scalar;
 	// this last window should accommodate a carry (from the NAF decomposition)
@@ -61,19 +60,6 @@ func Generate(conf config.Curve, baseDir string, bgen *bavard.BatchGenerator) er
 		return lc
 	}
 	batchSize := func(c int) int {
-		// nbBuckets := (1 << (c - 1))
-		// if c <= 12 {
-		// 	return nbBuckets/10 + 3*c
-		// }
-		// if c <= 14 {
-		// 	return nbBuckets/15
-		// }
-		// return nbBuckets / 20
-		// TODO @gbotrel / @yelhousni this need a better heuristic
-		// in theory, larger batch size == less inversions
-		// but if nbBuckets is small, then a large batch size will produce lots of collisions
-		// and queue ops.
-		// there is probably a cache-friendliness factor at play here too.
 		switch c {
 		case 10:
 			return 80
@@ -91,6 +77,8 @@ func Generate(conf config.Curve, baseDir string, bgen *bavard.BatchGenerator) er
 			return 640
 		}
 	}
+
+	funcs := common.Funcs()
 	funcs["lastC"] = lastC
 	funcs["batchSize"] = batchSize
 
@@ -139,12 +127,12 @@ func Generate(conf config.Curve, baseDir string, bgen *bavard.BatchGenerator) er
 	}
 
 	bavardOpts := []func(*bavard.Bavard) error{bavard.Funcs(funcs)}
-	if err := bgen.GenerateWithOptions(conf, packageName, "./ecc/template", bavardOpts, entries...); err != nil {
+	if err := eccGen.GenerateWithOptions(conf, packageName, "", "", bavardOpts, entries...); err != nil {
 		return err
 	}
 
 	// No G2 for secp256k1 and grumpkin
-	if conf.Equal(config.SECP256K1) || conf.Equal(config.GRUMPKIN) {
+	if conf.Equal(config.SECP256K1) || conf.Equal(config.GRUMPKIN) || conf.Equal(config.SECP256R1) {
 		return nil
 	}
 
@@ -154,8 +142,7 @@ func Generate(conf config.Curve, baseDir string, bgen *bavard.BatchGenerator) er
 		{File: filepath.Join(baseDir, "marshal_test.go"), Templates: []string{"tests/marshal.go.tmpl"}},
 	}
 
-	marshal := []func(*bavard.Bavard) error{bavard.Funcs(funcs)}
-	if err := bgen.GenerateWithOptions(conf, packageName, "./ecc/template", marshal, entries...); err != nil {
+	if err := eccGen.GenerateWithOptions(conf, packageName, "", "", bavardOpts, entries...); err != nil {
 		return err
 	}
 
@@ -165,7 +152,7 @@ func Generate(conf config.Curve, baseDir string, bgen *bavard.BatchGenerator) er
 		{File: filepath.Join(baseDir, "g2_test.go"), Templates: []string{"tests/point.go.tmpl"}},
 	}
 	g2 := pconf{conf, conf.G2}
-	if err := bgen.Generate(g2, packageName, "./ecc/template", entries...); err != nil {
+	if err := eccGen.Generate(g2, packageName, "", "", entries...); err != nil {
 		return err
 	}
 

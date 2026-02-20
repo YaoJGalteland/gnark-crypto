@@ -20,10 +20,7 @@ import (
 	"math/big"
 	"testing"
 	"math/rand/v2"
-
-	{{if eq .Name "secp256k1"}}
-		crand "crypto/rand"
-	{{end}}
+	crand "crypto/rand"
 
 	{{if or (eq .CoordType "fptower.E2") (eq .CoordType "fptower.E4")}}
 	"github.com/consensys/gnark-crypto/ecc/{{.Name}}/internal/fptower"
@@ -31,9 +28,10 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/{{.Name}}/fp"
 	{{end}}
 	"github.com/consensys/gnark-crypto/ecc/{{.Name}}/fr"
-	{{if eq .Name "bls12-381"}}
+    {{- if or (eq .Name "bls12-381") (eq .Name "bls12-377")}}
 	"github.com/consensys/gnark-crypto/ecc/{{.Name}}/hash_to_curve"
-	{{ end }}
+	{{end}}
+
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/prop"
 )
@@ -77,6 +75,21 @@ import (
             },
             {{$fuzzer}},
         ))
+
+        properties.Property("[{{ toUpper .Name }}] [3]P == [2]P+P", prop.ForAll(
+            func(a {{ .CoordType}}) bool {
+                var p, res1, res2 {{ $TJacobian }}
+                g := MapTo{{ toUpper .PointName}}(a)
+                p.FromAffine(&g)
+                res1.Triple(&p)
+                res2.Double(&p).
+                    AddAssign(&p)
+
+                return res1.Equal(&res2)
+            },
+            {{$fuzzer}},
+        ))
+
 
         {{if eq .PointName "g2" }}
         {{- if and (eq .PointName "g2") (ne .Name "bw6-761") (ne .Name "bw6-633")}}
@@ -153,7 +166,7 @@ func TestIsOn{{ toUpper .PointName }}(t *testing.T) {
 		{{$fuzzer}},
 	))
 
-    {{- if or (eq .Name "bls12-381") (and (eq .Name "bn254") (eq .PointName "g2"))}}
+    {{- if or (eq .Name "bls12-377") (eq .Name "bls12-381") (and (eq .Name "bn254") (eq .PointName "g2"))}}
 	properties.Property("[{{ toUpper .Name }}] IsInSubGroup should return false for a point on the cofactor-torsion", prop.ForAll(
 		func(a {{ .CoordType}}) bool {
 			op := fuzzCofactorOf{{ toUpper .PointName}}(a)
@@ -166,6 +179,67 @@ func TestIsOn{{ toUpper .PointName }}(t *testing.T) {
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
 }
 
+func TestIsInSubGroupBatch{{ toUpper .PointName}}(t *testing.T) {
+	t.Parallel()
+	parameters := gopter.DefaultTestParameters()
+	if testing.Short() {
+		parameters.MinSuccessfulTests = 1
+	} else {
+		parameters.MinSuccessfulTests = 100
+	}
+
+	properties := gopter.NewProperties(parameters)
+
+	// number of points to test
+	const nbSamples = 100
+
+	properties.Property("[{{ toUpper .Name }}] IsInSubGroupBatch{{ toUpper .PointName}} test should pass with high probability", prop.ForAll(
+		func(mixer fr.Element) bool {
+			// mixer ensures that all the words of a frElement are set
+			var sampleScalars [nbSamples]fr.Element
+
+			for i := range uint64(nbSamples) {
+				sampleScalars[i].SetUint64(i+1).
+					Mul(&sampleScalars[i], &mixer)
+			}
+
+			// random points in {{ toUpper .PointName}}
+			result := BatchScalarMultiplication{{ toUpper .PointName}}(&{{.PointName}}GenAff, sampleScalars[:])
+
+			return IsInSubGroupBatch{{ toUpper .PointName}}(result)
+		},
+		GenFr(),
+	))
+
+    {{- if or (eq .Name "bls12-377") (eq .Name "bls12-381") (and (eq .Name "bn254") (eq .PointName "g2"))}}
+	properties.Property("[{{ toUpper .Name }}] IsInSubGroupBatch test should not pass with high probability", prop.ForAll(
+		func(mixer fr.Element, a {{ .CoordType}}) bool {
+			// mixer ensures that all the words of a frElement are set
+			var sampleScalars [nbSamples]fr.Element
+
+			for i := 1; i <= nbSamples; i++ {
+				sampleScalars[i-1].SetUint64(uint64(i)).
+					Mul(&sampleScalars[i-1], &mixer)
+			}
+
+			// random points in {{ toUpper .PointName}}
+			result := BatchScalarMultiplication{{ toUpper .PointName}}(&{{.PointName}}GenAff, sampleScalars[:])
+
+			// random points in the h-torsion
+			h := fuzzCofactorOf{{ toUpper .PointName}}(a)
+			result[0].FromJacobian(&h)
+			h = fuzzCofactorOf{{ toUpper .PointName}}(a)
+			result[nbSamples-1].FromJacobian(&h)
+
+			return !IsInSubGroupBatch{{ toUpper .PointName}}(result)
+		},
+		GenFr(),
+		{{$fuzzer}},
+	))
+    {{- end}}
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
 
 func Test{{ toUpper .PointName }}Conversions(t *testing.T) {
 	t.Parallel()
@@ -521,7 +595,7 @@ func Test{{ $TAffine }}Ops(t *testing.T) {
 
 				r := fr.Modulus()
 				var g {{ $TJacobian }}
-				g.mulGLV(&{{.PointName}}Gen, r)
+				g.ScalarMultiplication(&{{.PointName}}Gen, r)
 
 				var scalar, blindedScalar, rminusone big.Int
 				var op1, op2, op3, gneg {{ $TJacobian }}
@@ -546,7 +620,11 @@ func Test{{ $TAffine }}Ops(t *testing.T) {
                 var op1, op2 {{ $TJacobian }}
                 s.BigInt(&r)
                 op1.mulWindowed(&{{.PointName}}Gen, &r)
+                {{- if and (eq .PointName "g2") (or (eq .Name "bn254") (eq .Name "bls12-381") (eq .Name "bls12-377")) }}
+                op2.mulGLS(&{{.PointName}}Gen, &r)
+                {{- else }}
                 op2.mulGLV(&{{.PointName}}Gen, &r)
+                {{- end }}
                 return op1.Equal(&op2) && !op1.Equal(&{{.PointName}}Infinity)
 
             },
@@ -684,8 +762,46 @@ func Test{{ toUpper .PointName }}BatchScalarMultiplication(t *testing.T) {
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
 }
 
+
+func Test{{ $TJacobian }}Triple(t *testing.T) {
+	// test triple on the generator and the infinity point
+	// against double and add
+	var a {{ $TJacobian }}
+	a.Set(&{{.PointName}}Gen)
+	var infinity {{ $TJacobian }}
+	infinity.Set(&{{.PointName}}Infinity)
+
+	var pTriple, pDoubleAdd {{ $TJacobian }}
+	pTriple.Triple(&a)
+	pDoubleAdd.Double(&a).AddAssign(&a)
+
+	if !pTriple.Equal(&pDoubleAdd) {
+		t.Fatalf("triple and double+add do not match: %s != %s", pTriple.String(), pDoubleAdd.String())
+	}
+
+	// same thing with infinity point
+	pTriple.Triple(&infinity)
+	pDoubleAdd.Double(&infinity).AddAssign(&infinity)
+
+	if !pTriple.Equal(&pDoubleAdd) {
+		t.Fatalf("triple and double+add do not match: %s != %s", pTriple.String(), pDoubleAdd.String())
+	}
+}
+
+
+func Benchmark{{ $TJacobian }}Triple(b *testing.B) {
+	var a {{ $TJacobian }}
+	a.Set(&{{.PointName}}Gen)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		a.Triple(&a)
+	}
+}
+
 // ------------------------------------------------------------
 // benches
+
+
 
 func Benchmark{{ $TJacobian }}IsInSubGroup(b *testing.B) {
 	var a {{ $TJacobian }}
@@ -795,33 +911,53 @@ func Benchmark{{ $TAffine }}BatchScalarMultiplication(b *testing.B) {
 }
 
 func Benchmark{{ $TJacobian }}ScalarMultiplication(b *testing.B) {
-
-	var scalar big.Int
-	r := fr.Modulus()
-	scalar.SetString("5243587517512619047944770508185965837690552500527637822603658699938581184513", 10)
-	scalar.Add(&scalar, r)
-
-	var doubleAndAdd {{ $TJacobian }}
-
-	b.Run("double and add", func(b *testing.B) {
-		b.ResetTimer()
-		for j := 0; j < b.N; j++ {
-			doubleAndAdd.mulWindowed(&{{.PointName}}Gen, &scalar)
+	for i := 0; i <= fr.Modulus().BitLen(); i += 8 {
+		bound := new(big.Int).Lsh(big.NewInt(1), uint(i))
+		scalar, err := crand.Int(crand.Reader, bound)
+		if err != nil {
+			b.Fatalf("failed to generate random scalar: %v", err)
 		}
-	})
 
-    {{if .GLV}}
-	var glv {{ $TJacobian }}
-	b.Run("GLV", func(b *testing.B) {
-		b.ResetTimer()
-		for j := 0; j < b.N; j++ {
-			glv.mulGLV(&{{.PointName}}Gen, &scalar)
-		}
-	})
-    {{end}}
-
+		var doubleAndAdd {{ $TJacobian }}
+		b.Run(fmt.Sprintf("method=window/scalarwidth=%d", i), func(b *testing.B) {
+			b.ResetTimer()
+			for j := 0; j < b.N; j++ {
+				doubleAndAdd.mulWindowed(&{{ .PointName }}Gen, scalar)
+			}
+		})
+		{{ if .GLV }}
+		var glv {{ $TJacobian }}
+		b.Run(fmt.Sprintf("method={{- if and (eq .PointName "g2") (or (eq .Name "bn254") (eq .Name "bls12-381") (eq .Name "bls12-377")) }}GLS{{- else }}GLV{{- end }}/scalarwidth=%d", i), func(b *testing.B) {
+			b.ResetTimer()
+			for j := 0; j < b.N; j++ {
+				{{- if and (eq .PointName "g2") (or (eq .Name "bn254") (eq .Name "bls12-381") (eq .Name "bls12-377")) }}
+				glv.mulGLS(&{{ .PointName }}Gen, scalar)
+				{{- else }}
+				glv.mulGLV(&{{ .PointName }}Gen, scalar)
+				{{- end }}
+			}
+		})
+		{{ end }}
+	}
 }
 
+func Benchmark{{ $TJacobian }}ScalarMultiplicationMethod(b *testing.B) {
+	for i := 0; i <= fr.Modulus().BitLen(); i += 8 {
+		bound := new(big.Int).Lsh(big.NewInt(1), uint(i))
+		scalar, err := crand.Int(crand.Reader, bound)
+		if err != nil {
+			b.Fatalf("failed to generate random scalar: %v", err)
+		}
+
+		var res {{ $TJacobian }}
+		b.Run(fmt.Sprintf("scalarwidth=%d", i), func(b *testing.B) {
+			b.ResetTimer()
+			for j := 0; j < b.N; j++ {
+				res.ScalarMultiplication(&{{ .PointName }}Gen, scalar)
+			}
+		})
+	}
+}
 
 {{if .CofactorCleaning}}
 func Benchmark{{ $TAffine }}CofactorClearing(b *testing.B) {
@@ -952,7 +1088,7 @@ func Benchmark{{ toUpper .PointName}}AffineDouble(b *testing.B) {
 	}
 }
 
-{{- if eq .Name "bls12-381"}}
+{{- if or (eq .Name "bls12-381") (eq .Name "bls12-377")}}
 func fuzzCofactorOf{{ toUpper .PointName}}(f {{ .CoordType}}) {{ $TJacobian }} {
 	var res, jac {{ $TJacobian }}
     {{- if eq .PointName "g1" }}

@@ -201,10 +201,11 @@ func MillerLoop(P []G1Affine, Q []G2Affine) (GT, error) {
 			l1.r0.MulByElement(&l1.r0, &p[k].Y)
 			l1.r1.MulByElement(&l1.r1, &p[k].X)
 
-			if LoopCounter[i] == 0 {
+			switch LoopCounter[i] {
+			case 0:
 				// ℓ × result
 				result.MulBy034(&l1.r0, &l1.r1, &l1.r2)
-			} else if LoopCounter[i] == 1 {
+			case 1:
 				// qProj[k] ← qProj[k]+Q[k] and
 				// l2 the line ℓ passing qProj[k] and Q[k]
 				qProj[k].addMixedStep(&l2, &q[k])
@@ -215,7 +216,7 @@ func MillerLoop(P []G1Affine, Q []G2Affine) (GT, error) {
 				prodLines = fptower.Mul034By034(&l1.r0, &l1.r1, &l1.r2, &l2.r0, &l2.r1, &l2.r2)
 				// (ℓ × ℓ) × result
 				result.MulBy01234(&prodLines)
-			} else if LoopCounter[i] == -1 {
+			case -1:
 				// qProj[k] ← qProj[k]-Q[k] and
 				// l2 the line ℓ passing qProj[k] and -Q[k]
 				qProj[k].addMixedStep(&l2, &qNeg[k])
@@ -396,15 +397,14 @@ func PrecomputeLines(Q G2Affine) (PrecomputedLines [2][len(LoopCounter) - 1]Line
 	accQ.Set(&Q)
 	negQ.Neg(&Q)
 
-	n := len(LoopCounter)
-	for i := n - 2; i >= 0; i-- {
-		accQ.doubleStep(&PrecomputedLines[0][i])
-		if LoopCounter[i] == 1 {
-			accQ.addStep(&PrecomputedLines[1][i], &Q)
-		} else if LoopCounter[i] == -1 {
-			accQ.addStep(&PrecomputedLines[1][i], &negQ)
-		} else {
-			continue
+	for i := len(LoopCounter) - 2; i >= 0; i-- {
+		switch LoopCounter[i] {
+		case 0:
+			accQ.doubleStep(&PrecomputedLines[0][i])
+		case 1:
+			accQ.doubleAndAddStep(&PrecomputedLines[0][i], &PrecomputedLines[1][i], &Q)
+		case -1:
+			accQ.doubleAndAddStep(&PrecomputedLines[0][i], &PrecomputedLines[1][i], &negQ)
 		}
 	}
 	return PrecomputedLines
@@ -551,4 +551,80 @@ func (p *G2Affine) addStep(evaluations *LineEvaluationAff, a *G2Affine) {
 
 	p.X.Set(&xr)
 	p.Y.Set(&yr)
+}
+
+func (p *G2Affine) doubleAndAddStep(evaluations1, evaluations2 *LineEvaluationAff, a *G2Affine) {
+	var A, B, A2, B2, X2A2, t, U, AU, invAU, invA, invU, l1, x3, l2, x4, y4 fptower.E4
+
+	// The Eisenträger-Lauter-Montgomery formula for 2P+Q (https://eprint.iacr.org/2003/257)
+	// computes both slopes λ1 and λ2 using a single field inversion via batch inversion.
+	//
+	// Given P = (x1, y1) and Q = (x2, y2), let:
+	//   A = x1 - x2
+	//   B = y1 - y2
+	//   U = B² - (2x1 + x2)·A²
+	//
+	// Then:
+	//   λ1 = B/A                    (slope for P + Q)
+	//   λ2 = -λ1 - 2y1·A²/U         (slope for P + (P+Q))
+	//
+	// We compute 1/A and 1/U using Montgomery's batch inversion:
+	//   1/A = U/(A·U) and 1/U = A/(A·U) with a single inversion of A·U.
+
+	// Compute A = x1 - x2 and B = y1 - y2
+	A.Sub(&p.X, &a.X)
+	B.Sub(&p.Y, &a.Y)
+
+	// Compute A² and B²
+	A2.Square(&A)
+	B2.Square(&B)
+
+	// Compute U = B² - (2x1 + x2)·A²
+	t.Double(&p.X).Add(&t, &a.X)
+	X2A2.Mul(&t, &A2)
+	U.Sub(&B2, &X2A2)
+
+	// Batch inversion: compute 1/A and 1/U with a single inversion
+	AU.Mul(&A, &U)
+	invAU.Inverse(&AU)
+	invA.Mul(&U, &invAU)
+	invU.Mul(&A, &invAU)
+
+	// λ1 = B/A = B·(1/A)
+	l1.Mul(&B, &invA)
+
+	// x3 = λ1² - x1 - x2
+	x3.Square(&l1)
+	x3.Sub(&x3, &p.X)
+	x3.Sub(&x3, &a.X)
+
+	// line1 evaluation
+	evaluations1.R0.Set(&l1)
+	evaluations1.R1.Mul(&l1, &p.X)
+	evaluations1.R1.Sub(&evaluations1.R1, &p.Y)
+
+	// λ2 = -λ1 - 2y1·A²/U = -λ1 - 2y1·A²·(1/U)
+	l2.Double(&p.Y)
+	l2.Mul(&l2, &A2)
+	l2.Mul(&l2, &invU)
+	l2.Add(&l2, &l1)
+	l2.Neg(&l2)
+
+	// x4 = λ2² - x1 - x3
+	x4.Square(&l2)
+	x4.Sub(&x4, &p.X)
+	x4.Sub(&x4, &x3)
+
+	// y4 = λ2·(x1 - x4) - y1
+	y4.Sub(&p.X, &x4)
+	y4.Mul(&l2, &y4)
+	y4.Sub(&y4, &p.Y)
+
+	// line2 evaluation
+	evaluations2.R0.Set(&l2)
+	evaluations2.R1.Mul(&l2, &p.X)
+	evaluations2.R1.Sub(&evaluations2.R1, &p.Y)
+
+	p.X.Set(&x4)
+	p.Y.Set(&y4)
 }
