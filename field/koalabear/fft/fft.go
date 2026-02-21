@@ -151,10 +151,10 @@ func (domain *Domain) FFTInverse(a []koalabear.Element, decimation Decimation, o
 
 	// scale by CardinalityInv
 	if !opt.coset {
+		// Use vectorized scalar multiply instead of element-by-element loop
 		parallel.Execute(len(a), func(start, end int) {
-			for i := start; i < end; i++ {
-				a[i].Mul(&a[i], &domain.CardinalityInv)
-			}
+			v := koalabear.Vector(a[start:end])
+			v.ScalarMul(v, &domain.CardinalityInv)
 		}, opt.nbTasks)
 		return
 	}
